@@ -1,0 +1,8 @@
+{
+    "appId": "com.auralis.app",
+    "appName": "Auralis Ultra",
+    "webDir": "dist",
+    "server": {
+        "androidScheme": "https"
+    }
+}

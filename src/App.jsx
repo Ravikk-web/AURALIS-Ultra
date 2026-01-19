@@ -1,9 +1,11 @@
+import { Capacitor } from '@capacitor/core';
+import { StatusBar } from '@capacitor/status-bar';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import CanvasRenderer from './components/CanvasRenderer';
 import { useAudioAnalyzer } from './hooks/useAudioAnalyzer';
 import visualizers from './visualizers/visualizers';
 import { PALETTES } from './utils/palettes';
-import { Mic, Monitor, Maximize, Settings, X, Sliders, ChevronLeft, ChevronRight, Activity, Layers, Move, Volume2, ExternalLink, Grid, Save, Trash2, Zap, PictureInPicture2 } from 'lucide-react';
+import { Mic, Maximize, Settings, X, Sliders, ChevronLeft, ChevronRight, Layers, Move, Volume2, Grid, Save, Trash2, Zap } from 'lucide-react';
 
 const DEFAULT_SETTINGS = {
   sensitivity: 1.5,
@@ -25,22 +27,48 @@ const App = () => {
   const [activeVizId, setActiveVizId] = useState(1);
   const [showUI, setShowUI] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
-
-  // Profile State
   const [profiles, setProfiles] = useState({});
   const [presets, setPresets] = useState([]);
   const [newPresetName, setNewPresetName] = useState('');
 
   const hideTimerRef = useRef(null);
   const scrollContainerRef = useRef(null);
-  const canvasRendererRef = useRef(null); // Ref for PiP Control
+  const isNative = Capacitor.isNativePlatform();
 
-  // Load Profiles & Presets on Mount
+  // Screen Wake Lock
+  useEffect(() => {
+    let wakeLock = null;
+
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+          console.log('Screen Wake Lock acquired');
+        }
+      } catch (err) {
+        console.warn('Screen Wake Lock failed:', err);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        requestWakeLock();
+      }
+    };
+
+    requestWakeLock();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      if (wakeLock) wakeLock.release();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
   useEffect(() => {
     try {
       const savedProfiles = localStorage.getItem('auralis_profiles');
       if (savedProfiles) setProfiles(JSON.parse(savedProfiles));
-
       const savedPresets = localStorage.getItem('auralis_presets');
       if (savedPresets) setPresets(JSON.parse(savedPresets));
     } catch (e) {
@@ -48,7 +76,6 @@ const App = () => {
     }
   }, []);
 
-  // Save Profiles using debounce-like effect
   useEffect(() => {
     if (Object.keys(profiles).length > 0) {
       localStorage.setItem('auralis_profiles', JSON.stringify(profiles));
@@ -74,7 +101,6 @@ const App = () => {
       analyser.smoothingTimeConstant = activeSettings.smoothing;
     }
   }, [analyser, activeSettings.smoothing]);
-
 
   const savePreset = () => {
     if (!newPresetName.trim()) return;
@@ -130,17 +156,24 @@ const App = () => {
     };
   }, [showSettings]);
 
-  const handleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(e => console.log(e));
-    } else {
-      document.exitFullscreen().catch(e => console.log(e));
-    }
-  };
-
-  const handlePiP = () => {
-    if (canvasRendererRef.current) {
-      canvasRendererRef.current.togglePiP();
+  const handleFullscreen = async () => {
+    try {
+      if (isNative) {
+        const info = await StatusBar.getInfo();
+        if (info.visible) {
+          await StatusBar.hide();
+        } else {
+          await StatusBar.show();
+        }
+      } else {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(e => console.log(e));
+        } else {
+          document.exitFullscreen().catch(e => console.log(e));
+        }
+      }
+    } catch (e) {
+      console.error("Fullscreen toggle failed", e);
     }
   };
 
@@ -162,7 +195,6 @@ const App = () => {
       {/* Canvas Layer */}
       <div className={`absolute inset-0 ${activeSettings.gpuLayer ? 'gpu-accelerated' : ''}`}>
         <CanvasRenderer
-          ref={canvasRendererRef}
           visualizer={activeVisualizer.run}
           analyser={analyser}
           settings={{
@@ -183,31 +215,14 @@ const App = () => {
             <h1 className="text-3xl md:text-5xl font-bold tracking-tighter text-white mb-2">Auralis Ultra</h1>
             <p className="text-zinc-400 mb-8 text-sm md:text-lg">High-Performance Spatial Audio Visualization</p>
 
-            <div className="flex flex-col gap-4 justify-center items-center">
-              <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
-                <button
-                  onClick={() => initAudio('mic')}
-                  className="group relative px-6 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all overflow-hidden w-full md:w-auto"
-                >
-                  <span className="flex items-center justify-center gap-2 font-medium">
-                    <Mic size={18} className="text-purple-400" /> Microphone
-                  </span>
-                </button>
-                <button
-                  onClick={() => initAudio('system')}
-                  className="group relative px-6 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all overflow-hidden w-full md:w-auto"
-                >
-                  <span className="flex items-center justify-center gap-2 font-medium">
-                    <Monitor size={18} className="text-blue-400" /> System Audio
-                  </span>
-                </button>
-              </div>
-              <div className="w-full h-px bg-white/10 my-2" />
+            <div className="flex justify-center">
               <button
-                onClick={() => initAudio('system')}
-                className="text-xs md:text-sm text-zinc-400 hover:text-white flex items-center gap-2 transition-colors"
+                onClick={() => initAudio('mic')}
+                className="group relative px-6 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all overflow-hidden w-full md:w-auto"
               >
-                <ExternalLink size={14} /> Connect Spotify / YouTube / Browser Tab
+                <span className="flex items-center justify-center gap-2 font-medium">
+                  <Mic size={18} className="text-purple-400" /> Start (Microphone)
+                </span>
               </button>
             </div>
           </div>
@@ -225,9 +240,6 @@ const App = () => {
           </div>
 
           <div className="flex gap-2 self-end md:self-auto">
-            <button onClick={handlePiP} className="p-2 md:p-3 bg-black/40 border border-white/5 rounded-full hover:bg-white/10 transition-colors backdrop-blur-md" title="Picture-in-Picture">
-              <PictureInPicture2 size={18} className="md:w-5 md:h-5" />
-            </button>
             <button onClick={handleFullscreen} className="p-2 md:p-3 bg-black/40 border border-white/5 rounded-full hover:bg-white/10 transition-colors backdrop-blur-md" title="Fullscreen">
               <Maximize size={18} className="md:w-5 md:h-5" />
             </button>
@@ -266,10 +278,7 @@ const App = () => {
                     {presets.map(preset => (
                       <div key={preset.id} onClick={() => loadPreset(preset)} className="group flex items-center justify-between p-2 rounded-lg bg-black/20 hover:bg-white/10 cursor-pointer transition-colors border border-transparent hover:border-white/5">
                         <span className="text-sm text-zinc-200 truncate">{preset.name}</span>
-                        <button
-                          onClick={(e) => deletePreset(preset.id, e)}
-                          className="opacity-100 md:opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 p-1"
-                        >
+                        <button onClick={(e) => deletePreset(preset.id, e)} className="opacity-100 md:opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 p-1">
                           <Trash2 size={14} />
                         </button>
                       </div>
@@ -277,6 +286,7 @@ const App = () => {
                   </div>
                 )}
               </div>
+
               {/* Audio Calibration & Performance */}
               <div className="space-y-4">
                 <h4 className="text-xs font-bold text-orange-400 uppercase tracking-widest flex items-center gap-2"><Volume2 size={12} /> Calibration & Perf</h4>
@@ -290,14 +300,9 @@ const App = () => {
                 <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/5">
                   <div className="flex items-center gap-2">
                     <Zap size={16} className={activeSettings.gpuLayer ? 'text-yellow-400' : 'text-zinc-600'} />
-                    <div className="text-xs font-medium text-zinc-300">
-                      GPU Acceleration Hint
-                    </div>
+                    <div className="text-xs font-medium text-zinc-300">GPU Acceleration Hint</div>
                   </div>
-                  <button
-                    onClick={() => updateSetting('gpuLayer', !activeSettings.gpuLayer)}
-                    className={`w-10 h-5 rounded-full relative transition-colors ${activeSettings.gpuLayer ? 'bg-yellow-600' : 'bg-zinc-700'}`}
-                  >
+                  <button onClick={() => updateSetting('gpuLayer', !activeSettings.gpuLayer)} className={`w-10 h-5 rounded-full relative transition-colors ${activeSettings.gpuLayer ? 'bg-yellow-600' : 'bg-zinc-700'}`}>
                     <div className={`absolute top-1 left-1 w-3 h-3 rounded-full bg-white transition-transform ${activeSettings.gpuLayer ? 'translate-x-5' : 'translate-x-0'}`} />
                   </button>
                 </div>
@@ -309,6 +314,7 @@ const App = () => {
                   <input type="range" min="0.1" max="0.99" step="0.01" value={activeSettings.smoothing} onChange={(e) => updateSetting('smoothing', parseFloat(e.target.value))} className="w-full h-1 bg-zinc-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-orange-500 [&::-webkit-slider-thumb]:rounded-full hover:[&::-webkit-slider-thumb]:bg-orange-400" />
                 </div>
               </div>
+
               {/* Structure & Frequency Section */}
               <div className="space-y-4">
                 <h4 className="text-xs font-bold text-cyan-400 uppercase tracking-widest flex items-center gap-2"><Grid size={12} /> Structure & Frequency</h4>
@@ -327,6 +333,7 @@ const App = () => {
                   <input type="range" min="20" max="100" step="10" value={activeSettings.freqRange} onChange={(e) => updateSetting('freqRange', parseInt(e.target.value))} className="w-full h-1 bg-zinc-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-cyan-500 [&::-webkit-slider-thumb]:rounded-full" />
                 </div>
               </div>
+
               {/* Visual Style Section */}
               <div className="space-y-4">
                 <h4 className="text-xs font-bold text-blue-400 uppercase tracking-widest flex items-center gap-2"><Layers size={12} /> Style</h4>
@@ -348,6 +355,7 @@ const App = () => {
                   </div>
                 </div>
               </div>
+
               {/* Size & Layout */}
               <div className="space-y-4">
                 <h4 className="text-xs font-bold text-green-400 uppercase tracking-widest flex items-center gap-2"><Move size={12} /> Size & Layout</h4>
@@ -392,12 +400,9 @@ const App = () => {
                   key={viz.id}
                   onClick={() => setActiveVizId(viz.id)}
                   className={`
-                                    relative flex-shrink-0 w-28 h-16 md:w-40 md:h-24 rounded-xl border transition-all duration-300 overflow-hidden group snap-center
-                                    ${isActive
-                      ? 'border-purple-500/50 shadow-[0_0_30px_rgba(168,85,247,0.4)] scale-105 z-10'
-                      : 'border-white/5 hover:border-white/20 hover:scale-100 grayscale hover:grayscale-0 opacity-70 hover:opacity-100'
-                    }
-                                `}
+                    relative flex-shrink-0 w-28 h-16 md:w-40 md:h-24 rounded-xl border transition-all duration-300 overflow-hidden group snap-center
+                    ${isActive ? 'border-purple-500/50 shadow-[0_0_30px_rgba(168,85,247,0.4)] scale-105 z-10' : 'border-white/5 hover:border-white/20 hover:scale-100 grayscale hover:grayscale-0 opacity-70 hover:opacity-100'}
+                  `}
                 >
                   <div className={`absolute inset-0 bg-gradient-to-br ${isActive ? 'from-purple-900/40 to-black' : 'from-zinc-800 to-black'}`} />
                   <div className="absolute inset-0 opacity-30">
@@ -417,7 +422,6 @@ const App = () => {
             <ChevronRight size={20} className="md:w-6 md:h-6" />
           </button>
         </div>
-
       </div>
     </div>
   );

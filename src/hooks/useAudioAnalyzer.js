@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
+import { Capacitor } from '@capacitor/core';
 
 const FFT_SIZE = 2048;
 const SMOOTHING_TIME_CONSTANT = 0.8;
@@ -11,6 +12,12 @@ export const useAudioAnalyzer = () => {
 
     const initAudio = useCallback(async (sourceType = 'mic') => {
         try {
+            // Native Platform check for system audio
+            if (sourceType === 'system' && Capacitor.isNativePlatform()) {
+                alert("System Audio Capture is not supported on mobile due to OS restrictions. Please use 'Microphone' mode to visualize ambient music.");
+                return false;
+            }
+
             // Cleanup previous context and streams
             if (audioContextRef.current) {
                 audioContextRef.current.close();
