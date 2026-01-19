@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useLayoutEffect, forwardRef, useImperativeHandle, useState } from 'react';
+import { PictureInPicture2 } from 'lucide-react';
 
 const CanvasRenderer = forwardRef(({ visualizer, analyser, settings = { sensitivity: 1 } }, ref) => {
     const canvasRef = useRef(null);
@@ -134,6 +135,16 @@ const CanvasRenderer = forwardRef(({ visualizer, analyser, settings = { sensitiv
         <>
             <canvas ref={canvasRef} className="fixed top-0 left-0 w-full h-full block bg-black touch-none" />
             <video ref={videoRef} className="hidden" muted playsInline />
+
+            {/* PiP Optimization Overlay */}
+            {isPiPActive && (
+                <div className="absolute inset-0 bg-black z-50 flex flex-col items-center justify-center">
+                    <div className="flex flex-col items-center gap-4 animate-pulse opacity-50">
+                        <PictureInPicture2 size={64} className="text-zinc-500" />
+                        <span className="text-zinc-500 font-mono tracking-[0.2em] text-sm uppercase">PiP Enabled</span>
+                    </div>
+                </div>
+            )}
         </>
     );
 });
